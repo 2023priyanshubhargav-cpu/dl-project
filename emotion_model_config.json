@@ -1,0 +1,25 @@
+{
+  "classes": [
+    "angry",
+    "disgust",
+    "fear",
+    "happy",
+    "neutral",
+    "sad",
+    "surprise"
+  ],
+  "num_classes": 7,
+  "embedding_dim": 768,
+  "input_size": 224,
+  "mean": [
+    0.485,
+    0.456,
+    0.406
+  ],
+  "std": [
+    0.229,
+    0.224,
+    0.225
+  ],
+  "best_rafdb_acc": 0.8748370273794003
+}

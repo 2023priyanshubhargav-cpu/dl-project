@@ -1,0 +1,63 @@
+{
+  "branch": "health",
+  "version": "v2_channel_dropout",
+  "dataset": "WESAD",
+  "sensor": "wrist",
+  "signals": [
+    "ACCx",
+    "ACCy",
+    "ACCz",
+    "BVP",
+    "EDA",
+    "TEMP"
+  ],
+  "channel_drop_prob": [
+    0.3,
+    0.3,
+    0.3,
+    0.1,
+    0.1,
+    0.2
+  ],
+  "num_channels": 6,
+  "classes": [
+    "baseline",
+    "stress",
+    "amusement",
+    "meditation"
+  ],
+  "num_classes": 4,
+  "embedding_dim": 512,
+  "target_hz": 4,
+  "window_sec": 30,
+  "window_steps": 120,
+  "stride_sec": 15,
+  "best_val_acc": 0.5979247730220493,
+  "train_subjects": [
+    "S2",
+    "S3",
+    "S4",
+    "S5",
+    "S6",
+    "S7",
+    "S8",
+    "S9",
+    "S10",
+    "S11",
+    "S13"
+  ],
+  "val_subjects": [
+    "S14",
+    "S15",
+    "S16",
+    "S17"
+  ],
+  "improvements": [
+    "priority based channel dropout",
+    "group sensor failure simulation",
+    "L2 normalization in embedding",
+    "residual connection",
+    "noise only on present channels",
+    "confidence scoring"
+  ]
+}
