@@ -3,111 +3,135 @@
 ![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg) ![PyTorch 2.0+](https://img.shields.io/badge/PyTorch-2.0+-ee4c2c.svg) ![Transformers](https://img.shields.io/badge/Transformers-Wav2Vec2-green.svg) ![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)
 
 ## 📑 Project Essence
-MPMIS is an industrial-grade multimodal platform that integrates **5 sensory modalities** (Vision, Sound, and Context) to monitor patient safety. The system is designed with a **self-evolving iterative loop**: it detects its own uncertainty, saves those "edge cases," and uses them for autonomous retraining.
+The **Multimodal Patient Monitoring & Iterative Learning System (MPMIS)** is an industrial-grade platform that integrates five distinct sensory modalities to continuously monitor patient status. By employing a late-fusion multimodal architecture, the system is highly robust against single-sensor failures. 
+
+Furthermore, the system is designed with a **Self-Evolving Iterative Loop**: it detects inference uncertainty in real-time, autonomously saves the surrounding "edge-case" sensory data, and seamlessly integrates these cases into future model fine-tuning iterations.
+
+---
+
+## 🔬 Core Modalities & Architectures
+Each sensory branch extracts highly specialized features before reaching the fusion brain. The exact neural architectures are defined as follows:
+
+- **Emotion**: `convnext_small` (via `timm`) augmented with a custom **CBAM** (Convolutional Block Attention Module) for deep facial affect and micro-expression detection.
+- **Environment**: `resnet50` (pretrained vision backbone) for processing the contextual layout of the scene (e.g., distinguishing a hospital bed from an office environment).
+- **Health**: `Custom 1D CNN` (`ConvBlock1D` arrays with kernel=7) designed to process multi-channel physiological or physical indicator signals over time.
+- **Gesture**: `efficientnet_b0` (via `torchvision.models`) functioning as a Confidence-Gated Gesture Encoder to reliably track hand signals like "Help" or "Stop" while masking false positives.
+- **Speech**: `facebook/wav2vec2-base` (via HuggingFace Transformers) processing audio on a 1.0s sliding window to capture real-time spoken distress commands.
 
 ---
 
 ## 🏗 Industrial Architecture & Data Flow
-The system follows a strict pipeline to ensure high-stakes decisions (like `Call Nurse`) are grounded in multi-sensor evidence.
 
 ```mermaid
 graph TD
     %% Input Layer
-    Sensors[IP Webcam / Microphone] -->|Raw Video/Audio| Pre[Preprocessing & Windowing]
+    Sensors[IP Webcam / Local Microphone] -->|Raw Video/Audio Streams| Pre[Preprocessing & 1.0s Sliding Window]
     
     %% Branch Layers
-    subgraph "Branch Intelligence"
-        Pre -->|Faces| EMO[Emotion: ViT/CNN]
-        Pre -->|Scene| ENV[Environment: Scripted JIT]
-        Pre -->|Movement| GES[Gesture: Gated Encoder]
-        Pre -->|Audio| SPE[Speech: Wav2Vec2 Transformer]
-        Pre -->|Indicators| HEA[Health: Physiological Model]
+    subgraph "Modality Feature Extraction"
+        Pre -->|Faces| EMO[Emotion Branch]
+        Pre -->|Context| ENV[Environment Branch]
+        Pre -->|Signals| HEA[Health Branch]
+        Pre -->|Movement| GES[Gesture Branch]
+        Pre -->|Vocal| SPE[Speech Branch]
     end
     
     %% Fusion Layer
-    EMO & ENV & GES & SPE & HEA -->|Embeddings + Confidence| FUS[Attention-Masked Fusion Brain]
+    EMO & ENV & GES & SPE & HEA -->|512d Embeddings + Confidence Gates| FUS[Attention-Masked Fusion Brain]
     
     %% Stabilization Layer
-    FUS -->|Logits| RL[RL Smoother: PPO Agent]
-    RL -->|Stable Probabilities| DEC[8-Class Action Decision]
+    FUS -->|Raw Probability Logits| RL[RL Smoother: Proximal Policy Optimization]
+    RL -->|Temporally Stable Probabilities| DEC[Final 8-Class Action Prediction]
     
-    %% Iterative Learning Loop (The Heart of the System)
-    DEC -->|Uncertainty Detection| BM[Buffer Manager]
-    BM -->|Saves Frames/Audio| DB[(Persistent Data Buffer)]
-    DB -->|Fine-Tuning Scripts| TRAIN[Training & Model Export]
-    TRAIN -->|Saves v2, v3, v4| FS[File System]
-    FS -->|Auto-Versioning| EMO & FUS
-    
-    style FS fill:#f9f,stroke:#333,stroke-width:2px
-    style BM fill:#bbf,stroke:#333,stroke-width:2px
+    %% Iterative Learning Pipeline
+    DEC -->|Detects Low Confidence (<75%)| BM[Buffer Manager]
+    BM -->|Saves Edge-Case Frames & Audio| DB[(Persistent `/buffers/` Directory)]
+    DB -->|Offline Fine-Tuning Scripts| TRAIN[Training Workflow]
+    TRAIN -->|Saves v2, v3 Weights| FS[System File Storage]
+    FS -->|Auto-Versioning Runtime Load| EMO & FUS
 ```
 
 ---
 
-## 🛠 Prerequisites & Installation
+## ⚙️ Complete Setup & Execution Flow
 
-### 1. Model Dependencies
-This project utilizes **Wav2Vec2** for speech processing. On the first run, the system will automatically download `facebook/wav2vec2-base` from HuggingFace.
+Follow this exact workflow to deploy the MPMIS framework on your local machine or server.
 
-### 2. Environment Setup
+### Step 1: Clone the Repository
 ```bash
-# Core Neural Engines
+git clone https://github.com/2023priyanshubhargav-cpu/dl-project.git
+cd dl-project
+```
+
+### Step 2: Environment Setup
+It is highly recommended to isolate the project within a virtual environment.
+```bash
+# Create and activate virtual environment
+python3 -m venv venv
+source venv/bin/activate  # On Windows use: venv\Scripts\activate
+
+# Install core Neural Network engines (CUDA 11.8 compatible)
 pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
 
-# Vision & Audio Processing
+# Install required Vision, Audio, and Utility libraries
 pip install opencv-python numpy pillow sounddevice librosa transformers timm requests
 ```
+*(Note: Upon first execution, the `transformers` library will require an internet connection to download the Wav2Vec2 weights).*
 
-### 3. Hardware Requirements
-- **Camera**: Local USB Webcam (Index 0) or **IP Webcam** (Mobile).
-- **GPU**: NVIDIA GPU (CUDA) strongly recommended for real-time performance.
+### Step 3: Hardware Sensor Configuration (IP Webcam)
+MPMIS natively supports the **IP Webcam** app (Android/iOS) to utilize your mobile phone as an untethered biometric sensor.
+1. Download and launch **IP Webcam** on your mobile device.
+2. Press "Start server" at the bottom of the app.
+3. Note the IP address displayed on your phone screen (e.g., `192.168.1.5:8080`).
+4. Open `realtime_fusion_8cls.py` and configure the endpoint on line ~88:
+    ```python
+    USE_IP_WEBCAM_AUDIO = True
+    IP_WEBCAM_IP        = "192.168.1.5" # Update this to match your phone
+    IP_WEBCAM_PORT      = 8080
+    ```
 
----
-
-## 🚀 Execution & Configuration
-
-### Running the Real-Time Suite
+### Step 4: Run the Real-Time Inference Engine
+Initialize the 5-branch multimodal fusion interface:
 ```bash
 python3 realtime_fusion_8cls.py
 ```
-
-### Key Configuration (`realtime_fusion_8cls.py`):
-- **Modality Gating**: Gestures are automatically masked if confidence is below **75%** to prevent halluncinations.
-- **Audio Windowing**: A **1.0s sliding buffer** ensures no words are cut off during hardware chunking.
-- **Auto-Versioning**: The system uses `get_latest_model()`. If you train a new model and name it `emotion_model_full_v2.pth`, the system will **automatically load it** on the next start.
+**Runtime Controls:**
+- Press **'Q'** to safely shut down the system. This gracefully terminates audio threads and writes any pending buffer data to disk.
 
 ---
 
-## 📂 Project Module Catalog
+## 🔄 The Full Iterative Learning Process
 
-The repository is organized into distinct functional layers:
+The true strength of MPMIS is its ability to autonomously collect training data when it fails, allowing developers to create rapidly evolving model versions.
 
-| Category | Key Files | Purpose |
+### Phase 1: Autonomous Edge-Case Collection
+While `realtime_fusion_8cls.py` is running, the **Buffer Manager** analyzes the confidence score of the Fusion Brain. If the prediction is uncertain (e.g., < 75% confidence on an "Emergency" action), the system captures the raw video frame and the 1.0s audio chunk and saves it locally in the `/buffers/[modality]/` directories.
+
+### Phase 2: Supervised Label Verification
+Developers can periodically check the `/buffers/` directory to review the edge cases that confused the system. Mislabelled data can be manually moved or corrected.
+
+### Phase 3: Fine-Tuning Execution
+Run the dedicated training scripts to fine-tune specific modalities or the overarching fusion brain on the newly collected edge cases:
+```bash
+python3 train_emotion_finetune.py
+# or
+python3 train_fusion_v3.py
+```
+
+### Phase 4: Auto-Versioning Deployment
+The fine-tuning scripts are programmed to save weights sequentially (e.g., `emotion_model_full_v2.pth`, `best_fusion_model_8cls_v3.pt`).
+The primary `realtime_fusion_8cls.py` script utilizes a `get_latest_model()` dynamic loader. Upon your next execution, the system will **automatically detect and load** the highest-versioned weights, closing the iterative loop with zero manual code changes.
+
+---
+
+## 📂 Comprehensive Module Catalog
+
+| Module | Filename | Function |
 | :--- | :--- | :--- |
-| **Main Engine** | `realtime_fusion_8cls.py` | Orchestrates all 5 branches, fusion, and display. |
-| **Data Management** | `buffer_manager.py` | Captures edge cases and organizes them into `/buffers`. |
-| **Decision Smoothing** | `ppo_inference.py`, `rl_environment.py` | Stabilizes predictions using Reinforcement Learning. |
-| **Model Research** | `Emotion.ipynb`, `Speech.ipynb`, `Gesture.ipynb` | Core training logs, dataset analysis, and JIT exports. |
-| **Auto-Training** | `train_fusion_v3.py`, `train_emotion_finetune.py` | Scripts to retrain models on the saved buffers. |
-| **Production Weights**| `best_fusion_model_8cls.pt` | High-performance TorchScript fusion weights. |
-
----
-
-## 🔄 The Iterative Learning Workflow (How to Evolve the System)
-
-1.  **Monitor**: Run the system. If it misclassifies a gesture, the `BufferManager` saves it to `/buffers/gesture/`.
-2.  **Label**: Review the saved data in `/buffers`.
-3.  **Train**: Run `python3 train_gesture_finetune.py`.
-4.  **Deploy**: The script will save `gesture_model_v2.pth`.
-5.  **Restart**: Simply restart `realtime_fusion_8cls.py`; it will detect `v2` and start using the improved intelligence immediately.
-
----
-
-## ⚠️ Troubleshooting & FAQ
-- **"IP Webcam connection error"**: Check if your phone and PC are on the same Wi-Fi. Set `USE_IP_WEBCAM_AUDIO = False` to use your computer's built-in mic instead.
-- **"Speech masked"**: Ensure `transformers` is installed. The first run requires internet access to download the Wav2Vec2 backbone.
-- **"Gesture [MASKED]"**: This is intentional. It means the system sees motion but isn't 75% sure it's a specific command.
-
----
-**Technical Lead**: Antigravity AI  
-**Project Status**: Production Ready / Iterative Mode Active
+| **Inference Engine** | `realtime_fusion_8cls.py` | The core runtime loop. Initializes all branches, executes the audio/video streams, applies the gating thresholds, and orchestrates the Fusion and RL models. |
+| **Data Orchestration**| `buffer_manager.py` | Governs the memory management. Analyzes runtime uncertainty, manages IO operations, and organizes edge-case files for the Iterative Loop. |
+| **Decision Smoothing**| `ppo_inference.py` | Reinforcement Learning agent. Smooths the raw probability distributions generated by the Fusion Brain to prevent rapid output flickering. |
+| **Audio Streamer** | `ip_audio_streamer.py` | Custom thread-safe HTTP streaming client to reliably fetch and decode mobile audio streams without blocking the main vision loop. |
+| **Training Pipeline** | `train_fusion_v3.py`, `train_*_finetune.py` | Automated PyTorch training loops designed to ingest the `/buffers/` data and export `vX+1` model weights. |
+| **JIT Exporter** | `export_embedding_models.py` | Converts dynamic `.pth` models into highly optimized, production-ready TorchScript (`.pt`) files for low-latency inference. |
+| **Jupyter Research** | `Emotion.ipynb`, `Speech.ipynb`, `Gesture.ipynb` | Origin training notebooks containing the foundational research, exploratory data analysis, and initial backbone architecture definitions. |
