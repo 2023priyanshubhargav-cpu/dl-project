@@ -3,7 +3,7 @@
 ![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg) ![PyTorch 2.0+](https://img.shields.io/badge/PyTorch-2.0+-ee4c2c.svg) ![Transformers](https://img.shields.io/badge/Transformers-Wav2Vec2-green.svg) ![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)
 
 ## 📑 Project Essence
-The **Multimodal Patient Monitoring & Iterative Learning System (MPMIS)** is an industrial-grade platform that integrates five distinct sensory modalities to continuously monitor patient status. By employing a late-fusion multimodal architecture, the system is highly robust against single-sensor failures. 
+The **Continual Deep learning for Adaptive perception and Decision making for Human-Robot Interaction** project is an industrial-grade platform that integrates five distinct sensory modalities to continuously monitor patient status. By employing a late-fusion multimodal architecture, the system is highly robust against single-sensor failures. 
 
 Furthermore, the system is designed with a **Self-Evolving Iterative Loop**: it detects inference uncertainty in real-time, autonomously saves the surrounding "edge-case" sensory data, and seamlessly integrates these cases into future model fine-tuning iterations.
 
@@ -55,7 +55,7 @@ graph TD
 
 ## ⚙️ Complete Setup & Execution Flow
 
-Follow this exact workflow to deploy the MPMIS framework on your local machine or server.
+Follow this exact workflow to deploy the framework on your local machine or server.
 
 ### Step 1: Clone the Repository
 ```bash
@@ -79,7 +79,7 @@ pip install opencv-python numpy pillow sounddevice librosa transformers timm req
 *(Note: Upon first execution, the `transformers` library will require an internet connection to download the Wav2Vec2 weights).*
 
 ### Step 3: Hardware Sensor Configuration (IP Webcam)
-MPMIS natively supports the **IP Webcam** app (Android/iOS) to utilize your mobile phone as an untethered biometric sensor.
+The system natively supports the **IP Webcam** app (Android/iOS) to utilize your mobile phone as an untethered biometric sensor.
 1. Download and launch **IP Webcam** on your mobile device.
 2. Press "Start server" at the bottom of the app.
 3. Note the IP address displayed on your phone screen (e.g., `192.168.1.5:8080`).
