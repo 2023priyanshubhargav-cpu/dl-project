@@ -1,161 +1,111 @@
-# 🧠 Multimodal Patient Monitoring & Iterative Learning System
+# 🧠 Multimodal Patient Monitoring & Iterative Learning System (MPMIS)
 
-[![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
-[![PyTorch 2.0+](https://img.shields.io/badge/PyTorch-2.0+-ee4c2c.svg)](https://pytorch.org/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg) ![PyTorch 2.0+](https://img.shields.io/badge/PyTorch-2.0+-ee4c2c.svg) ![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)
 
-An advanced, real-time multimodal AI platform designed for high-stakes patient care environments. This system fuses visual, environmental, and auditory signals to categorize patient status into 8 critical action classes, utilizing **Reinforcement Learning (RL)** for decision stability and an **Autonomous Iterative Learning** pipeline for continuous model evolution.
+## 📋 Executive Summary
+The **Multimodal Patient Monitoring & Iterative Learning System (MPMIS)** is a state-of-the-art AI framework designed for high-fidelity patient surveillance. By integrating five distinct sensory modalities—**Emotion, Environment, Health, Gesture, and Speech**—the system provides a comprehensive "Action Prediction" that outperforms traditional single-modality sensors. 
 
----
-
-## 📑 Table of Contents
-- [Project Overview](#-project-overview)
-- [System Architecture](#-system-architecture)
-- [The 5-Modality Fusion Brain](#-the-5-modality-fusion-brain)
-- [Installation & Setup](#-installation--setup)
-- [Hardware Configuration (IP Webcam)](#-hardware-configuration-ip-webcam)
-- [Running the System](#-running-the-system)
-- [Autonomous Iterative Learning](#-autonomous-iterative-learning)
-- [Reinforcement Learning Smoother](#-reinforcement-learning-smoother)
-- [File Structure Guide](#-file-structure-guide)
-
----
-
-## 🌟 Project Overview
-
-Traditional monitoring systems rely on single-source data (e.g., just video). This project implements a **Multimodal Transformer-based Fusion** architecture that understands context. It doesn't just see a patient; it understands if they are in an office vs. a hospital bed, listens for "Help" commands, and gates low-confidence gestures to prevent false alarms.
-
-### Key Capabilities:
-- **Real-time 8-Class Classification**: Categorizes status from `Normal` to `Emergency`.
-- **Intelligent Modality Gating**: Automatically masks modalities during sensor failure or low confidence (e.g., ignoring gesture noise when no hand is present).
-- **RL Decision Smoothing**: Uses a PPO-trained agent to eliminate prediction "flickering" between frames.
-- **Autonomous Retraining**: Automatically captures and organizes "edge-case" data to improve models over time.
+It features an autonomous **Iterative Learning Loop** that self-corrects by capturing edge-case data, and a **Reinforcement Learning (RL) Smoother** to ensure temporal stability in decision-making.
 
 ---
 
 ## 🏗 System Architecture
+The MPMIS architecture is built on a modular "Branch & Fusion" design. Each modality operates as an independent feature extractor, whose outputs are concatenated and processed by a weighted Attention-Masked Fusion Brain.
 
 ```mermaid
 graph TD
-    A[IP Webcam / Mic] -->|Video| B[Vision Processing]
-    A -->|Audio| C[Audio Processing]
+    A[Sensory Input: IP Webcam / Mic] --> B{Feature Extraction}
     
-    subgraph "Modality Branches"
-        B --> B1[Emotion: ViT/CNN]
-        B --> B2[Environment: Context API]
-        B --> B3[Health: Physical Status]
-        B --> B4[Gesture: Confidence Gated]
-        C --> C1[Speech: Wav2Vec2]
+    subgraph "Modality Modules"
+        B --> B1[Emotion: Facial Affect Analysis]
+        B --> B2[Environment: Contextual Scene Analysis]
+        B --> B3[Health: Physical Indicator Model]
+        B --> B4[Gesture: Confidence-Gated Gesture Rec]
+        B --> B5[Speech: Wav2Vec2 Audio Transformer]
     end
     
-    B1 & B2 & B3 & B4 & C1 --> D[Multimodal Fusion Brain]
-    D --> E[RL Smoothing Agent]
-    E --> F[Final Action Decision]
+    B1 & B2 & B3 & B4 & B5 --> C[Attention-Masked Fusion Engine]
+    C --> D[PPO Reinforcement Learning Smoother]
+    D --> E[8-Class Action Decision]
     
-    F -->|Low Conf / Edge Case| G[Buffer Manager]
-    G -->|Auto-Organize| H[(Retraining Datasets)]
-    H -->|Iterative Loop| B1 & D
+    subgraph "Iterative Learning Pipeline"
+        E --> F[Buffer Manager: Uncertainty Detection]
+        F --> G[(Persistent Data Buffer)]
+        G --> H[Model Fine-tuning]
+        H --> B1 & C
+    end
 ```
 
 ---
 
-## 🧠 The 5-Modality Fusion Brain
+## 🚀 Getting Started
 
-The system processes five distinct data streams to reach a consensus:
+### 1. Prerequisites & Dependencies
+The system requires a CUDA-enabled GPU for real-time inference (though CPU fallback is supported).
 
-| Modality | Technology | Role |
-| :--- | :--- | :--- |
-| **Emotion** | ViT / ResNet (Timm) | Detects facial distress, pain, or agitation. |
-| **Environment** | Scripted Context | Identifies setting (e.g., Hospital, Laboratory, Office). |
-| **Health** | Physiological Model | Tracks basic physical state indicators. |
-| **Gesture** | CNN-based Gated | Interprets hand signals (Help, Stop) with a 75% confidence gate. |
-| **Speech** | Wav2Vec2 (Transformer) | High-fidelity recognition of spoken distress calls. |
+**Primary Libraries:**
+- **Core ML**: `torch`, `torchvision`, `torchaudio`
+- **Vision**: `opencv-python`, `pillow`, `timm`
+- **Audio**: `librosa`, `sounddevice`, `transformers`
+- **Utilities**: `numpy`, `requests`, `pyyaml`
 
----
-
-## ⚙️ Installation & Setup
-
-### 1. Clone the Repository
-```bash
-git clone https://github.com/2023priyanshubhargav-cpu/dl-project.git
-cd emotion_project
-```
-
-### 2. Install Dependencies
-Ensure you have Python 3.8+ installed. It is recommended to use a virtual environment.
+**Installation:**
 ```bash
 pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
 pip install opencv-python numpy pillow sounddevice librosa transformers timm requests
 ```
 
-### 3. RL Smoother Setup (Optional but Recommended)
-To enable stable predictions without flickering:
-```bash
-python3 setup_rl.py
-python3 install_rl_dependencies.py
-```
-
----
-
-## 📱 Hardware Configuration (IP Webcam)
-
-This project is optimized for use with the **IP Webcam** app (Android/iOS), allowing your mobile phone to act as the primary sensor.
-
-1.  Open **IP Webcam** on your phone.
-2.  Start the Server and note the IP address (e.g., `192.168.1.5:8080`).
-3.  Update the configuration in `realtime_fusion_8cls.py`:
+### 2. Hardware Setup (IP Webcam)
+The system is designed to interface with mobile devices via the **IP Webcam** protocol for remote sensing.
+1.  Launch **IP Webcam** on an Android/iOS device and start the server.
+2.  In `realtime_fusion_8cls.py`, configure the endpoint:
     ```python
-    USE_IP_WEBCAM_AUDIO = True
-    IP_WEBCAM_IP   = "192.168.1.5" # Your Phone's IP
-    IP_WEBCAM_PORT = 8080
+    IP_WEBCAM_IP = "192.168.x.x"  # Device IP
+    IP_WEBCAM_PORT = 8080         # Default Port
     ```
 
----
-
-## 🚀 Running the System
-
-To launch the full 8-class multimodal monitoring interface:
-
+### 3. Execution
+Run the primary real-time monitoring interface:
 ```bash
 python3 realtime_fusion_8cls.py
 ```
 
-### Controls:
-- **'Q'**: Safe shutdown (stops audio streams and saves buffers).
-- **Terminal Output**: Displays real-time confidence scores and **`[MASKED]`** tags for ignored sensors.
+---
+
+## 🛠 Module Deep Dive
+
+### 🔹 Visual Intelligence (Emotion & Gesture)
+- **Facial Affect**: Utilizes a Vision Transformer (ViT) to detect 8 primary emotions, providing indicators of pain or distress.
+- **Hand Gestures**: Employs a confidence-gated CNN. The system ignores signals below 75% confidence to eliminate environmental noise.
+
+### 🔹 Auditory Intelligence (Speech)
+- **Transformer Audio**: Powered by **Wav2Vec2**, the speech module analyzes audio buffers for critical keywords and distress calls. It uses a 1.0s sliding window for high temporal resolution.
+
+### 🔹 Decision Intelligence (RL Smoother)
+- **Temporal Stability**: A **Proximal Policy Optimization (PPO)** agent acts as a "low-pass filter" on model predictions, preventing rapid jumping between action classes and ensuring high-confidence triggers.
+
+### 🔹 Data Intelligence (Buffer Manager)
+- **Iterative Pipeline**: Automatically captures frames when the Fusion Engine is uncertain. These "edge cases" are saved in `/buffers/` for future retraining, enabling the system to learn from its own mistakes autonomously.
 
 ---
 
-## 🔄 Autonomous Iterative Learning
+## 📁 Repository Structure
 
-The `BufferManager` acts as the system's long-term memory. It monitors the uncertainty of the fusion model. If the system is unsure about a specific frame, it:
-1.  **Captures** the frame and the audio snippet.
-2.  **Labels** it with the current model prediction.
-3.  **Saves** it to the `/buffers` directory, organized by modality.
-
-This data is then used by the `train_fusion_v3.py` scripts to "harden" the model against its own weaknesses.
-
----
-
-## 🤖 Reinforcement Learning Smoother
-
-To prevent "Action Flickering" (where the system jumps between `Normal` and `Emergency` rapidly), we utilize a **PPO (Proximal Policy Optimization)** agent.
-- **Input**: Current probabilities from the Fusion Brain.
-- **Goal**: Maintain temporal consistency.
-- **Output**: A smoothed, stable action that waits for consistent evidence before triggering an alarm.
+| File | Description |
+| :--- | :--- |
+| `realtime_fusion_8cls.py` | The main execution script for real-time monitoring. |
+| `buffer_manager.py` | Core logic for the autonomous data collection system. |
+| `ppo_inference.py` | Reinforcement Learning agent for prediction smoothing. |
+| `Emotion.ipynb` | Research notebook for vision branch development. |
+| `best_fusion_model_8cls.pt` | Compiled TorchScript weights for production use. |
+| `CONTINUAL_LEARNING_PLAN.md` | Roadmap for long-term model evolution. |
 
 ---
 
-## 📂 File Structure Guide
-
-*   `realtime_fusion_8cls.py`: **Main Entry Point**.
-*   `buffer_manager.py`: Logic for autonomous data collection.
-*   `ppo_inference.py`: Interface for the RL smoothing agent.
-*   `Emotion.ipynb`: The primary research and training notebook.
-*   `Speech.ipynb`: Wav2Vec2 fine-tuning and audio processing.
-*   `best_fusion_model_8cls.pt`: Production-ready TorchScript weights.
-*   `/buffers`: Auto-generated datasets for iterative learning.
+## ⚠️ Troubleshooting
+- **Webcam Latency**: Ensure the mobile device and host PC are on the same 5GHz Wi-Fi band.
+- **Audio Stream Error**: Verify that the IP Webcam's audio stream is enabled in the app's settings.
+- **Masked Modalities**: If a modality shows `[MASKED]`, check lighting conditions or audio input levels.
 
 ---
-
-Developed by **Antigravity** & the **Advanced Agentic Coding Team**.
+Developed for advanced clinical support systems. **Confidentiality and Privacy: Use only with approved patient consent.**
