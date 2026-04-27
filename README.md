@@ -1,4 +1,4 @@
-# 🧠 Multimodal Patient Monitoring & Iterative Learning System (MPMIS)
+# 🧠 Continual Deep learning for Adaptive perception and Decision making for Human-Robot Interaction
 
 ![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg) ![PyTorch 2.0+](https://img.shields.io/badge/PyTorch-2.0+-ee4c2c.svg) ![Transformers](https://img.shields.io/badge/Transformers-Wav2Vec2-green.svg) ![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)
 
