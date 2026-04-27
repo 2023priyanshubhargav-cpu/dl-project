@@ -44,8 +44,8 @@ graph TD
     RL -->|Temporally Stable Probabilities| DEC[Final 8-Class Action Prediction]
     
     %% Iterative Learning Pipeline
-    DEC -->|Detects Low Confidence (<75%)| BM[Buffer Manager]
-    BM -->|Saves Edge-Case Frames & Audio| DB[(Persistent `/buffers/` Directory)]
+    DEC -->|Detects Low Confidence| BM[Buffer Manager]
+    BM -->|Saves Edge-Case Frames and Audio| DB[(Persistent Data Buffer)]
     DB -->|Offline Fine-Tuning Scripts| TRAIN[Training Workflow]
     TRAIN -->|Saves v2, v3 Weights| FS[System File Storage]
     FS -->|Auto-Versioning Runtime Load| EMO & FUS
