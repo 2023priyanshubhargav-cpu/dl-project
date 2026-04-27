@@ -520,9 +520,12 @@ def get_speech_embedding(audio_chunk):
         return None, None
     try:
         audio_np = np.asarray(audio_chunk, dtype=np.float32).reshape(-1)
+        if audio_np.size == 0:
+            return None, None
+            
         audio_np = np.nan_to_num(audio_np, nan=0.0, posinf=0.0, neginf=0.0)
 
-        if AUDIO_SAMPLE_RATE != SPEECH_MODEL_SAMPLE_RATE and audio_np.size > 0:
+        if AUDIO_SAMPLE_RATE != SPEECH_MODEL_SAMPLE_RATE:
             duration = audio_np.size / float(AUDIO_SAMPLE_RATE)
             target_size = max(1, int(round(duration * SPEECH_MODEL_SAMPLE_RATE)))
             old_x = np.linspace(0.0, duration, num=audio_np.size, endpoint=False)
@@ -530,13 +533,17 @@ def get_speech_embedding(audio_chunk):
             audio_np = np.interp(new_x, old_x, audio_np).astype(np.float32)
 
         waveform = torch.from_numpy(audio_np).unsqueeze(0).to(device)
-        if waveform.abs().max() > 0:
+        
+        # Check if waveform is valid and not empty
+        if waveform.numel() > 0 and waveform.abs().max() > 0:
             waveform = waveform / waveform.abs().max()
+            
         target = SPEECH_MODEL_SAMPLES
         if waveform.size(1) > target:
             waveform = waveform[:, :target]
-        else:
+        elif waveform.size(1) < target:
             waveform = F.pad(waveform, (0, target - waveform.size(1)))
+            
         # Use forward to get both embedding and logits for label/confidence
         emb, logits = speech_model(waveform)
         lbl = get_class_label((emb, logits), SPEECH_COMMANDS)
@@ -588,7 +595,7 @@ def start_audio():
 # SECTION 8 — FUSION INFERENCE (8 CLASSES)
 # ==============================================================
 @torch.no_grad()
-def run_fusion(emotion_emb, env_emb, health_emb, gesture_emb, speech_emb):
+def run_fusion(emotion_emb, env_emb, health_emb, gesture_emb, speech_emb, provided_mask=None):
     fusion_model.eval()
     raw  = [emotion_emb, env_emb, health_emb, gesture_emb, speech_emb]
     embs, mask = [], []
@@ -596,7 +603,10 @@ def run_fusion(emotion_emb, env_emb, health_emb, gesture_emb, speech_emb):
     for i, emb in enumerate(raw):
         if emb is not None:
             embs.append(emb.to(device))
-            mask.append(1.0)
+            if provided_mask is not None:
+                mask.append(float(provided_mask[0, i]))
+            else:
+                mask.append(1.0)
         else:
             embs.append(torch.zeros(1, MODALITY_DIMS[i], device=device))
             mask.append(0.0)
@@ -784,6 +794,8 @@ def main():
 
     # Initialize Continual Learning Buffer Manager
     buffer_mgr = BufferManager(environment_classes=ENV_CLASSES)
+    audio_sliding_buffer = np.array([], dtype=np.float32)
+    
     try:
         while True:
             ret, frame = cap.read()
@@ -794,26 +806,73 @@ def main():
 
             frame_count += 1
 
-            # Get latest audio chunk (supports both system mic and IP Webcam)
+            # === SLIDING WINDOW SPEECH LOGIC ===
             try:
                 if USE_IP_WEBCAM_AUDIO and isinstance(audio_stream, IPWebcamAudioStreamer):
-                    # For IP Webcam: pull from streamer's queue (0.1s timeout for Wi-Fi lag)
-                    last_audio = audio_stream.get_chunk(timeout=0.1)
+                    new_audio = audio_stream.get_chunk(timeout=0.2)
+                    if new_audio is not None:
+                        # Append new audio to our sliding buffer
+                        audio_sliding_buffer = np.concatenate([audio_sliding_buffer, new_audio])
+                        
+                        # Keep only the last 1 second (AUDIO_SAMPLE_RATE samples)
+                        if len(audio_sliding_buffer) > AUDIO_SAMPLE_RATE:
+                            audio_sliding_buffer = audio_sliding_buffer[-AUDIO_SAMPLE_RATE:]
+                        
+                        last_audio = audio_sliding_buffer
+                    else:
+                        last_audio = None
                 else:
-                    # For system mic: pull from audio_queue (callback populates it)
                     last_audio = audio_queue.get_nowait()
             except (queue.Empty, Exception):
                 last_audio = None
 
             # Run inference every INFER_EVERY frames
             if frame_count % INFER_EVERY == 0:
+                # 1. Run all modality models
                 emotion_emb, emotion_lbl = get_emotion_embedding(frame)
                 env_emb,     env_lbl     = get_env_embedding(frame)
-                health_emb,  health_lbl  = get_health_embedding(None)   # (Masked - No sensor connected)
+                health_emb,  health_lbl  = get_health_embedding(None)
                 gesture_emb, gesture_lbl = get_gesture_embedding(frame)
-                speech_emb,  speech_lbl  = get_speech_embedding(last_audio)
+                speech_emb,  speech_lbl  = get_speech_embedding(audio_sliding_buffer)
 
-                # === Continual Learning Data Collection ===
+                # 2. === INTELLIGENT GESTURE GATING ===
+                GES_THRESHOLDS = {
+                    'help': 0.75, 'emergency': 0.75, 'attention': 0.75, 
+                    'stop': 0.75, 'no': 0.75, 'cancel': 0.75,           
+                    'suspicious': 0.60,                                
+                    'calm': 0.65, 'yes': 0.65                           
+                }
+                
+                gesture_mask_val = 1.0
+                gesture_display_lbl = gesture_lbl
+                
+                # gesture_lbl is a tuple: (name, conf_0_to_100)
+                if gesture_lbl and isinstance(gesture_lbl, (tuple, list)):
+                    try:
+                        g_cls  = str(gesture_lbl[0]).lower()
+                        g_conf = float(gesture_lbl[1]) / 100.0
+                        target_thresh = GES_THRESHOLDS.get(g_cls, 0.75)
+                        
+                        if g_conf < target_thresh:
+                            gesture_emb = torch.zeros((1, 512)).to(device)
+                            gesture_mask_val = 0.0
+                            gesture_display_lbl = (f"{g_cls} (MASKED)", gesture_lbl[1])
+                    except Exception as e:
+                        pass
+                else:
+                    gesture_emb = torch.zeros((1, 512)).to(device)
+                    gesture_mask_val = 0.0
+
+                # 3. Prepare mask [emotion, env, health, gesture, speech]
+                mask = torch.tensor([[1.0, 1.0, 0.0, gesture_mask_val, 1.0]]).to(device)
+                
+                # Update display dict with MASKED labels if needed
+                last_labels = {
+                    'emotion': emotion_lbl,
+                    'env':     env_lbl,
+                    'gesture': gesture_display_lbl,
+                    'speech':  speech_lbl
+                }
                 if emotion_lbl and emotion_lbl[0] != 'unk':
                     buffer_mgr.save_image_frame(frame, 'emotion', emotion_lbl[0], emotion_lbl[1])
                 if env_lbl and env_lbl[0] != 'unk':
@@ -838,13 +897,14 @@ def main():
                     'emotion': emotion_lbl,
                     'env':     env_lbl,
                     'health':  health_lbl,
-                    'gesture': gesture_lbl,
+                    'gesture': gesture_display_lbl,
                     'speech':  speech_lbl,
                 }
 
                 (last_action, last_conf,
                  last_probs, last_attn, last_used) = run_fusion(
-                    emotion_emb, env_emb, health_emb, gesture_emb, speech_emb
+                    emotion_emb, env_emb, health_emb, gesture_emb, speech_emb,
+                    provided_mask=mask
                 )
                 
                 # Apply RL smoother if available to stabilize flickering
@@ -855,10 +915,17 @@ def main():
 
                 # Console log with individual model confidences
                 mod_details = []
-                for mod_name in last_used:
+                for mod_name in MODALITY_NAMES:
                     if mod_name in last_labels and last_labels[mod_name]:
-                        lbl, cnf = last_labels[mod_name]
-                        mod_details.append(f"{mod_name}: {lbl} ({cnf:.1f}%)")
+                        val = last_labels[mod_name]
+                        if isinstance(val, (tuple, list)):
+                            lbl, cnf = val
+                        else:
+                            lbl, cnf = val, 0.0
+                            
+                        # Mark as masked if not in 'used'
+                        status = "" if mod_name in last_used else " [MASKED]"
+                        mod_details.append(f"{mod_name}: {lbl}{status} ({cnf:.1f}%)")
                 
                 details_str = " | ".join(mod_details)
                 print(f"[{frame_count:05d}] "
