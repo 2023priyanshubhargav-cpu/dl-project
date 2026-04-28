@@ -85,7 +85,7 @@ SPEECH_MODEL_SAMPLES     = 16000
 # IP WEBCAM AUDIO INPUT (Optional) — Set to use mobile phone audio
 # ────────────────────────────────────────────────────────────
 USE_IP_WEBCAM_AUDIO = True  # Set True to use IP Webcam, False for system mic
-IP_WEBCAM_IP        = "192.168.2.1"  # ← Change this to your IP Webcam's IP
+IP_WEBCAM_IP        = " 192.168.3.36 "  # ← Change this to your IP Webcam's IP
 IP_WEBCAM_PORT      = 8080  # Default IP Webcam port
 # ==============================================================
 

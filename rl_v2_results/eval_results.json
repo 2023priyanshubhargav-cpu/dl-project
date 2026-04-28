@@ -1,0 +1,19 @@
+{
+  "algorithms": {
+    "PPO": {
+      "accuracy": 85.77
+    },
+    "A2C": {
+      "accuracy": 86.9
+    },
+    "DQN": {
+      "accuracy": 87.155
+    }
+  },
+  "baselines": {
+    "Equal (No Gating)": 87.52499999999999,
+    "Emotion-Only": 72.72999999999999,
+    "Speech-Only": 68.83500000000001,
+    "Mask-Gesture": 83.965
+  }
+}
