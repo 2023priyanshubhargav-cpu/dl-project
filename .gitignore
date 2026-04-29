@@ -22,3 +22,7 @@ datasets/
 
 # Exceptions (If you want to keep configs but not weights)
 !model_versions.json
+
+# LOGS
+logs/
+*.log
