@@ -27,6 +27,10 @@ graph TD
     %% Input Layer
     Sensors[IP Webcam / Local Microphone] -->|Raw Video/Audio Streams| Pre[Preprocessing & 1.0s Sliding Window]
     
+    %% RL Gating Layer (Intake)
+    Pre -->|Confidence & Predictions| RG[RL Gating Agent: DQN]
+    RG -->|Dynamic Modality Weights| FUS
+    
     %% Branch Layers
     subgraph "Modality Feature Extraction"
         Pre -->|Faces| EMO[Emotion Branch]
@@ -37,11 +41,11 @@ graph TD
     end
     
     %% Fusion Layer
-    EMO & ENV & GES & SPE & HEA -->|512d Embeddings + Confidence Gates| FUS[Attention-Masked Fusion Brain]
+    EMO & ENV & GES & SPE & HEA -->|512d Embeddings| FUS[Attention-Masked Fusion Brain]
     
-    %% Stabilization Layer
-    FUS -->|Raw Probability Logits| RL[RL Smoother: Proximal Policy Optimization]
-    RL -->|Temporally Stable Probabilities| DEC[Final 8-Class Action Prediction]
+    %% Stabilization Layer (Output)
+    FUS -->|Raw Probability Logits| RS[RL Smoother: PPO]
+    RS -->|Temporally Stable Probabilities| DEC[Final 8-Class Action Prediction]
     
     %% Iterative Learning Pipeline
     DEC -->|Detects Low Confidence| BM[Buffer Manager]
@@ -50,6 +54,40 @@ graph TD
     TRAIN -->|Saves v2, v3 Weights| FS[System File Storage]
     FS -->|Auto-Versioning Runtime Load| EMO & FUS
 ```
+
+---
+
+## 🤖 Double-Layer Reinforcement Learning
+
+The platform employs a unique **Double-RL Architecture** to maximize trust and stability in high-stakes clinical environments:
+
+### Layer 1: Dynamic Modality Gating (Intake)
+Powered by a **DQN-based Gating Agent**, this layer acts as an "intelligent filter" before fusion occurs. It analyzes the real-time confidence scores of all 5 sensors and dynamically assigns trust weights. 
+*   **Feature**: If a modality (e.g., Gesture) is detected as noisy or low-confidence, the DQN agent masks it out (`weight=0.0`) or down-weights it, preventing garbage data from skewing the final diagnosis.
+*   **Logic**: Trained using a complex MDP (Markov Decision Process) with 10 distinct gating strategies.
+
+### Layer 2: Temporal Prediction Smoothing (Output)
+Powered by a **PPO-based Smoother**, this layer analyzes the history of classification logits to prevent "output flickering."
+*   **Feature**: Ensures the transition between patient states (e.g., from `Normal` to `Distressed`) is smooth and robust to momentary sensor glitches.
+
+---
+
+## 📊 Research & Benchmarking (7-Algorithm Study)
+
+To ensure peak performance, the system includes a comprehensive RL benchmark suite (`rl_v2_train.py`) that compares **7 different reinforcement learning algorithms**:
+
+| Algorithm Type | Models Tested |
+| :--- | :--- |
+| **On-Policy** | PPO, A2C, REINFORCE |
+| **Off-Policy** | DQN, Q-Learning, SARSA |
+| **Asynchronous** | A3C (Simulated) |
+
+### Key Research Artifacts:
+The system automatically generates a research-grade visualization suite in `/rl_v2_results/`, including:
+- **Ablation Studies**: Comparing RL Gating vs. Static Gating baselines.
+- **Convergence Curves**: Reward and Loss history across 50,000+ training steps.
+- **Policy Heatmaps**: Visualizing the decision-making logic of each algorithm across clinical scenarios.
+- **Parameter Sensitivity Analysis**: Head-to-head stability comparison (Learning Rate sweeps) between PPO and DQN.
 
 ---
 
@@ -68,15 +106,15 @@ It is highly recommended to isolate the project within a virtual environment.
 ```bash
 # Create and activate virtual environment
 python3 -m venv venv
-source venv/bin/activate  # On Windows use: venv\Scripts\activate
+source venv/bin/activate 
 
-# Install core Neural Network engines (CUDA 11.8 compatible)
+# Install core engines
 pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
+pip install stable-baselines3[extra] gymnasium shimmy
 
-# Install required Vision, Audio, and Utility libraries
-pip install opencv-python numpy pillow sounddevice librosa transformers timm requests
+# Install utilities
+pip install opencv-python numpy pillow sounddevice librosa transformers timm matplotlib seaborn
 ```
-*(Note: Upon first execution, the `transformers` library will require an internet connection to download the Wav2Vec2 weights).*
 
 ### Step 3: Hardware Sensor Configuration (IP Webcam)
 The system natively supports the **IP Webcam** app (Android/iOS) to utilize your mobile phone as an untethered biometric sensor.
@@ -128,10 +166,11 @@ The primary `realtime_fusion_8cls.py` script utilizes a `get_latest_model()` dyn
 
 | Module | Filename | Function |
 | :--- | :--- | :--- |
-| **Inference Engine** | `realtime_fusion_8cls.py` | The core runtime loop. Initializes all branches, executes the audio/video streams, applies the gating thresholds, and orchestrates the Fusion and RL models. |
-| **Data Orchestration**| `buffer_manager.py` | Governs the memory management. Analyzes runtime uncertainty, manages IO operations, and organizes edge-case files for the Iterative Loop. |
-| **Decision Smoothing**| `ppo_inference.py` | Reinforcement Learning agent. Smooths the raw probability distributions generated by the Fusion Brain to prevent rapid output flickering. |
-| **Audio Streamer** | `ip_audio_streamer.py` | Custom thread-safe HTTP streaming client to reliably fetch and decode mobile audio streams without blocking the main vision loop. |
-| **Training Pipeline** | `train_fusion_v3.py`, `train_*_finetune.py` | Automated PyTorch training loops designed to ingest the `/buffers/` data and export `vX+1` model weights. |
-| **JIT Exporter** | `export_embedding_models.py` | Converts dynamic `.pth` models into highly optimized, production-ready TorchScript (`.pt`) files for low-latency inference. |
-| **Jupyter Research** | `Emotion.ipynb`, `Speech.ipynb`, `Gesture.ipynb` | Origin training notebooks containing the foundational research, exploratory data analysis, and initial backbone architecture definitions. |
+| **Main Loop** | `realtime_fusion_8cls.py` | Orchestrates the 5-branch fusion, RL Gating, and RL Smoothing layers in real-time. |
+| **RL Gating Inference** | `rl_v2_inference.py` | Wrapper for loading trained DQN/PPO gating agents for live inference. |
+| **RL Training Suite**| `rl_v2_train.py` | The research engine. Benchmarks 7 algorithms and generates all analysis graphs. |
+| **RL Environment** | `rl_v2_environment.py` | Defines the Gymnasium MDP for modality trust and gating rewards. |
+| **Decision Smoothing**| `ppo_inference.py` | Layer 2 RL agent for temporal output stabilization. |
+| **Data Orchestration**| `buffer_manager.py` | Manages the JIT edge-case collection for the Continual Learning loop. |
+| **Training Pipeline** | `train_fusion_v3.py` | Automated fine-tuning loops for the late-fusion transformer brain. |
+| **Jupyter Research** | `Emotion.ipynb` etc. | Foundational DL research and backbone architecture definitions. |

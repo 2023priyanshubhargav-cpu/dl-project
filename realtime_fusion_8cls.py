@@ -38,6 +38,14 @@ except ImportError:
     print("[WARN] RL inference module not available. Predictions will not be smoothed.")
     RL_AVAILABLE = False
 
+# Import RL v2 Gating Agent
+try:
+    from rl_v2_inference import get_gating_smoother
+    GATING_AVAILABLE = True
+except ImportError:
+    print("[WARN] RL v2 Gating module not available.")
+    GATING_AVAILABLE = False
+
 
 warnings.filterwarnings("ignore")
 
@@ -85,7 +93,7 @@ SPEECH_MODEL_SAMPLES     = 16000
 # IP WEBCAM AUDIO INPUT (Optional) — Set to use mobile phone audio
 # ────────────────────────────────────────────────────────────
 USE_IP_WEBCAM_AUDIO = True  # Set True to use IP Webcam, False for system mic
-IP_WEBCAM_IP        = " 192.168.3.36 "  # ← Change this to your IP Webcam's IP
+IP_WEBCAM_IP        = "192.168.2.59"  # ← Change this to your IP Webcam's IP
 IP_WEBCAM_PORT      = 8080  # Default IP Webcam port
 # ==============================================================
 
@@ -617,7 +625,7 @@ def run_fusion(emotion_emb, env_emb, health_emb, gesture_emb, speech_emb, provid
     pred           = probs.argmax().item()
 
     attn = {MODALITY_NAMES[i]: round(attn_w[0, i].item(), 3) for i in range(NUM_MODALITIES)}
-    used = [MODALITY_NAMES[i] for i in range(NUM_MODALITIES) if mask[i] == 1.0]
+    used = [MODALITY_NAMES[i] for i in range(NUM_MODALITIES) if mask[i] > 0.0]
 
     return FUSION_CLASSES[pred], round(probs[pred].item() * 100, 1), probs.tolist(), attn, used
 
@@ -784,6 +792,7 @@ def main():
     
     # Initialize PPO smoother if available
     smoother = None
+    gating_agent = None
     if RL_AVAILABLE:
         try:
             smoother = get_ppo_smoother(model_path="ppo_smoother", window_size=5, num_classes=8)
@@ -791,6 +800,13 @@ def main():
         except Exception as e:
             print(f"[WARN] Failed to initialize PPO smoother: {e}")
             smoother = None
+            
+        try:
+            gating_agent = get_gating_smoother(algo="DQN")
+            print(f"[RL-v2 Gating] Agent loaded (Algorithm: DQN)")
+        except Exception as e:
+            print(f"[WARN] Failed to initialize RL Gating Agent: {e}")
+            gating_agent = None
 
     # Initialize Continual Learning Buffer Manager
     buffer_mgr = BufferManager(environment_classes=ENV_CLASSES)
@@ -835,36 +851,78 @@ def main():
                 gesture_emb, gesture_lbl = get_gesture_embedding(frame)
                 speech_emb,  speech_lbl  = get_speech_embedding(audio_sliding_buffer)
 
-                # 2. === INTELLIGENT GESTURE GATING ===
-                GES_THRESHOLDS = {
-                    'help': 0.75, 'emergency': 0.75, 'attention': 0.75, 
-                    'stop': 0.75, 'no': 0.75, 'cancel': 0.75,           
-                    'suspicious': 0.60,                                
-                    'calm': 0.65, 'yes': 0.65                           
-                }
+                # 1.5 === STRICT PRE-FILTERING (Sim2Real Gap Fix) ===
+                # Eliminate extreme noise before RL gating or fusion sees it
+                if emotion_lbl and emotion_lbl[1] < 70.0:
+                    emotion_lbl = None
+                    emotion_emb = torch.zeros((1, 768)).to(device)
                 
-                gesture_mask_val = 1.0
-                gesture_display_lbl = gesture_lbl
-                
-                # gesture_lbl is a tuple: (name, conf_0_to_100)
-                if gesture_lbl and isinstance(gesture_lbl, (tuple, list)):
-                    try:
-                        g_cls  = str(gesture_lbl[0]).lower()
-                        g_conf = float(gesture_lbl[1]) / 100.0
-                        target_thresh = GES_THRESHOLDS.get(g_cls, 0.75)
-                        
-                        if g_conf < target_thresh:
-                            gesture_emb = torch.zeros((1, 512)).to(device)
-                            gesture_mask_val = 0.0
-                            gesture_display_lbl = (f"{g_cls} (MASKED)", gesture_lbl[1])
-                    except Exception as e:
-                        pass
-                else:
+                if gesture_lbl and gesture_lbl[1] < 75.0:
+                    gesture_lbl = None
                     gesture_emb = torch.zeros((1, 512)).to(device)
-                    gesture_mask_val = 0.0
+                    
+                if speech_lbl and speech_lbl[1] < 65.0:
+                    speech_lbl = None
+                    speech_emb = torch.zeros((1, 512)).to(device)
 
-                # 3. Prepare mask [emotion, env, health, gesture, speech]
-                mask = torch.tensor([[1.0, 1.0, 0.0, gesture_mask_val, 1.0]]).to(device)
+                # 2. === DYNAMIC RL MODALITY GATING (v2) ===
+                gating_strategy = "Equal (fallback)"
+                mask = torch.tensor([[1.0, 1.0, 0.0, 1.0, 1.0]]).to(device)
+
+                
+                gesture_display_lbl = gesture_lbl  # default
+                
+                if gating_agent is not None:
+                    def get_norm_pred(lbl_tuple):
+                        if lbl_tuple and lbl_tuple[0] in FUSION_CLASSES:
+                            return FUSION_CLASSES.index(lbl_tuple[0]) / 7.0
+                        return 0.0
+
+                    preds = np.array([
+                        get_norm_pred(emotion_lbl),
+                        get_norm_pred(env_lbl),
+                        get_norm_pred(health_lbl),
+                        get_norm_pred(gesture_lbl),
+                        get_norm_pred(speech_lbl)
+                    ], dtype=np.float32)
+
+                    confs = np.array([
+                        (emotion_lbl[1]/100.0) if emotion_lbl else 0.0,
+                        (env_lbl[1]/100.0) if env_lbl else 0.0,
+                        (health_lbl[1]/100.0) if health_lbl else 0.0,
+                        (gesture_lbl[1]/100.0) if gesture_lbl else 0.0,
+                        (speech_lbl[1]/100.0) if speech_lbl else 0.0,
+                    ], dtype=np.float32)
+
+                    gating_weights, gating_strategy = gating_agent.get_weights(confs, preds)
+                    mask = torch.tensor([gating_weights], dtype=torch.float32).to(device)
+                    
+                    if gating_weights[3] == 0.0 and gesture_lbl:
+                        gesture_display_lbl = (f"{gesture_lbl[0]} (RL-MASKED)", gesture_lbl[1])
+                else:
+                    # Fallback to older hardcoded mask logic if RL agent is not loaded
+                    GES_THRESHOLDS = {
+                        'help': 0.75, 'emergency': 0.75, 'attention': 0.75, 
+                        'stop': 0.75, 'no': 0.75, 'cancel': 0.75,           
+                        'suspicious': 0.60,                                
+                        'calm': 0.65, 'yes': 0.65                           
+                    }
+                    gesture_mask_val = 1.0
+                    if gesture_lbl and isinstance(gesture_lbl, (tuple, list)):
+                        try:
+                            g_cls  = str(gesture_lbl[0]).lower()
+                            g_conf = float(gesture_lbl[1]) / 100.0
+                            target_thresh = GES_THRESHOLDS.get(g_cls, 0.75)
+                            if g_conf < target_thresh:
+                                gesture_emb = torch.zeros((1, 512)).to(device)
+                                gesture_mask_val = 0.0
+                                gesture_display_lbl = (f"{g_cls} (MASKED)", gesture_lbl[1])
+                        except Exception:
+                            pass
+                    else:
+                        gesture_emb = torch.zeros((1, 512)).to(device)
+                        gesture_mask_val = 0.0
+                    mask = torch.tensor([[1.0, 1.0, 0.0, gesture_mask_val, 1.0]]).to(device)
                 
                 # Update display dict with MASKED labels if needed
                 last_labels = {
@@ -929,6 +987,7 @@ def main():
                 
                 details_str = " | ".join(mod_details)
                 print(f"[{frame_count:05d}] "
+                      f"[Gating: {gating_strategy}] "
                       f"Action={last_action:<15s} "
                       f"Conf={last_conf:.1f}% | "
                       f"{details_str}")

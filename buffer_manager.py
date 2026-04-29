@@ -405,8 +405,8 @@ class BufferManager:
             
             print(f"\n📸 ENTER MANUAL CAPTURE MODE - {manual_class.upper()}")
             print(f"  - Make {manual_class} expressions to camera")
-            print("  - System auto-saves frames where confidence > 90%")
-            print(f"  - Collect until: buffers/emotion/{manual_class}/ has 50 images")
+            print("  - System will forcefully capture whatever you show (Bypassing AI check)")
+            print(f"  - Collect until: buffers/emotion/{manual_class}/ has {self.thresholds['emotion'][manual_class]} images")
             print("  - Press SPACEBAR when complete or wait for auto-completion")
             input(f"\nPress ENTER to start {manual_class.upper()} manual capture...")
 
@@ -423,10 +423,10 @@ class BufferManager:
                     x = transform(img).unsqueeze(0).to(device)
                     out = emotion_model(x)
                     lbl_name, lbl_conf = get_class_label_func(out, ['angry', 'disgust', 'fear', 'happy', 'neutral', 'sad', 'surprise'])
-                    
-                    saved = False
-                    if lbl_name == manual_class:
-                        saved = self.save_image_frame(frame, 'emotion', lbl_name, lbl_conf)
+                    # Bypass prediction checks to forcefully collect data for undertrained classes
+                    saved = self.save_image_frame(frame, 'emotion', manual_class, 100.0)
+                    if saved:
+                        time.sleep(0.15)  # Add slight delay so the 50 frames aren't identical
                 except Exception as e:
                     lbl_name, lbl_conf, saved = "error", 0.0, False
                     print(e)
